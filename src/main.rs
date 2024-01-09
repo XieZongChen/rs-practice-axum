@@ -1,4 +1,11 @@
-use axum::{response::Html, routing::get, Router};
+use axum::{
+    extract::Query,
+    response::{Html, IntoResponse},
+    routing::get,
+    Router,
+};
+// serde 是一个序列化框架
+use serde::Deserialize;
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
@@ -15,6 +22,7 @@ async fn main() {
     // 使用路由构建应用程序
     let app = Router::new()
         .route("/", get(handler))
+        .route("/query", get(query))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -40,4 +48,26 @@ async fn main() {
 
 async fn handler() -> Html<&'static str> {
     Html("<h1>Hello, World!</h1>")
+}
+
+/**
+ * 这里使用 Deserialize 属性后，Rust 编译器将自动生成实现 serde::Deserialize trait 的代码，
+ * 这样就可以将数据（如 JSON，XML 等格式）反序列化为这个 struct
+ */
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct Params {
+    foo: i32,
+    bar: String,
+    third: Option<i32>,
+}
+
+/**
+ * params 参数就是我们想要的 query 请求参数，Axum 框架自动帮我们处理了解析工作，让我们直接得到了 Rust 结构体对象
+ * Params 规定了这个请求接收的参数，以模式匹配的方式映射到 params 上
+ * 对于可选参数，可以用 Option 声明。若请求有传入多余参数，多余的将会被忽略，params 只会取到 Params 中定义了的参数
+ */
+async fn query(Query(params): Query<Params>) -> impl IntoResponse {
+    tracing::debug!("query params {:?}", params);
+    Html("<h3>Test query</h3>")
 }
