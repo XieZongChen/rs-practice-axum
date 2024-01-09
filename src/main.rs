@@ -13,6 +13,10 @@ use tower_http::{
 
 #[tokio::main]
 async fn main() {
+    /*
+     * 这是一个 Collector，可以将记录的日志收集后，再输出到控制台中。
+     * 收集的过程是通过通知的方式实现的：当 Event 发生或者 Span 开始/结束时，会调用 Collect 特征的相应方法通知 Collector。    
+     */ 
     tracing_subscriber::fmt::init();
 
     // 配置当访问不存在 url 时的默认返回
