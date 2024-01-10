@@ -1,10 +1,10 @@
 use axum::{
-    extract::Query,
-    response::{Html, IntoResponse},
+    extract::{Form, Query},
+    response::Html,
     routing::get,
     Router,
 };
-// serde 是一个序列化框架
+// serde 是 Rust 生态中用得最广泛的序列化和反序列化框架
 use serde::Deserialize;
 use tower_http::{
     services::{ServeDir, ServeFile},
@@ -15,8 +15,8 @@ use tower_http::{
 async fn main() {
     /*
      * 这是一个 Collector，可以将记录的日志收集后，再输出到控制台中。
-     * 收集的过程是通过通知的方式实现的：当 Event 发生或者 Span 开始/结束时，会调用 Collect 特征的相应方法通知 Collector。    
-     */ 
+     * 收集的过程是通过通知的方式实现的：当 Event 发生或者 Span 开始/结束时，会调用 Collect 特征的相应方法通知 Collector。
+     */
     tracing_subscriber::fmt::init();
 
     // 配置当访问不存在 url 时的默认返回
@@ -27,6 +27,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(handler))
         .route("/query", get(query))
+        .route("/form", get(show_form).post(accept_form))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -55,7 +56,7 @@ async fn handler() -> Html<&'static str> {
 }
 
 /**
- * 这里使用 Deserialize 属性后，Rust 编译器将自动生成实现 serde::Deserialize trait 的代码，
+ * 使用 Deserialize 属性后，Rust 编译器将自动生成实现 serde::Deserialize trait 的代码，
  * 这样就可以将数据（如 JSON，XML 等格式）反序列化为这个 struct
  */
 #[derive(Debug, Deserialize)]
@@ -67,11 +68,54 @@ struct Params {
 }
 
 /**
+ * GET 请求
  * params 参数就是我们想要的 query 请求参数，Axum 框架自动帮我们处理了解析工作，让我们直接得到了 Rust 结构体对象
  * Params 规定了这个请求接收的参数，以模式匹配的方式映射到 params 上
  * 对于可选参数，可以用 Option 声明。若请求有传入多余参数，多余的将会被忽略，params 只会取到 Params 中定义了的参数
  */
-async fn query(Query(params): Query<Params>) -> impl IntoResponse {
+async fn query(Query(params): Query<Params>) -> Html<&'static str> {
     tracing::debug!("query params {:?}", params);
     Html("<h3>Test query</h3>")
+}
+
+async fn show_form() -> Html<&'static str> {
+    Html(
+        r#"
+        <!doctype html>
+        <html>
+            <head></head>
+            <body>
+                <form action="/form" method="post">
+                    <label for="name">
+                        Enter your name:
+                        <input type="text" name="name">
+                    </label>
+
+                    <label>
+                        Enter your email:
+                        <input type="text" name="email">
+                    </label>
+
+                    <input type="submit" value="Subscribe!">
+                </form>
+            </body>
+        </html>
+        "#,
+    )
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct Input {
+    name: String,
+    email: String,
+}
+
+/**
+ * POST Form 请求
+ * 相比于前面的 query，form 代码结构完全一致，只是解包器由 Query 换成了 Form。这体现了 Axum 具有相当良好的人体工程学，使开发非常省力。
+ */
+async fn accept_form(Form(input): Form<Input>) -> Html<&'static str> {
+    tracing::debug!("form params {:?}", input);
+    Html("<h3>Form posted</h3>")
 }
