@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Form, Json, Query},
+    extract::{rejection::JsonRejection, Form, Json, Query},
     response::Html,
     routing::{get, post},
     Router,
@@ -29,6 +29,7 @@ async fn main() {
         .route("/query", get(query))
         .route("/form", get(show_form).post(accept_form))
         .route("/json", post(accept_json))
+        .route("/handleParsingError", post(handle_parsing_error))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -127,4 +128,34 @@ async fn accept_form(Form(input): Form<Input>) -> Html<&'static str> {
 async fn accept_json(Json(input): Json<Input>) -> Html<&'static str> {
     tracing::debug!("json params {:?}", input);
     Html("<h3>Json posted</h3>")
+}
+
+/**
+ * 解析错误处理请求
+ * 想要处理请求的解析错误，可以使用 Axum 的 Rejection
+ * 只需要在写解包器的时候，把参数类型改成使用 Result 包起来，Result 的错误类型为相应的解包器对应的 Rejection 类型就行了
+ * 比如 Json 解包器就对应 JsonRejection，Form 解包器就对应 FormRejection
+ */
+async fn handle_parsing_error(payload: Result<Json<Input>, JsonRejection>) {
+    match payload {
+        Ok(payload) => {
+            // 这里 payload 是一个有效的 JSON
+            tracing::debug!("json params {:?}", payload);
+        }
+        Err(JsonRejection::MissingJsonContentType(_)) => {
+            // 请求没有 `Content-Type: application/json` 头时
+        }
+        Err(JsonRejection::JsonDataError(_)) => {
+            // 无法将 body 反序列化为目标类型
+        }
+        Err(JsonRejection::JsonSyntaxError(_)) => {
+            // body 中语法错误
+        }
+        Err(JsonRejection::BytesRejection(_)) => {
+            // 提取请求 body 失败
+        }
+        Err(_) => {
+            // `JsonRejection` 标记为 `#[non_exhaustive]`，所以必须兜底
+        }
+    }
 }
