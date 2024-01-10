@@ -1,7 +1,7 @@
 use axum::{
-    extract::{Form, Query},
+    extract::{Form, Json, Query},
     response::Html,
-    routing::get,
+    routing::{get, post},
     Router,
 };
 // serde 是 Rust 生态中用得最广泛的序列化和反序列化框架
@@ -28,6 +28,7 @@ async fn main() {
         .route("/", get(handler))
         .route("/query", get(query))
         .route("/form", get(show_form).post(accept_form))
+        .route("/json", post(accept_json))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -118,4 +119,12 @@ struct Input {
 async fn accept_form(Form(input): Form<Input>) -> Html<&'static str> {
     tracing::debug!("form params {:?}", input);
     Html("<h3>Form posted</h3>")
+}
+
+/**
+ * POST Json 请求
+ */
+async fn accept_json(Json(input): Json<Input>) -> Html<&'static str> {
+    tracing::debug!("json params {:?}", input);
+    Html("<h3>Json posted</h3>")
 }
