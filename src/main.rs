@@ -1,11 +1,13 @@
 use axum::{
     extract::{rejection::JsonRejection, Form, Json, Query},
-    response::Html,
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
 // serde 是 Rust 生态中用得最广泛的序列化和反序列化框架
 use serde::Deserialize;
+use serde_json::json;
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
@@ -30,6 +32,7 @@ async fn main() {
         .route("/form", get(show_form).post(accept_form))
         .route("/json", post(accept_json))
         .route("/handleParsingError", post(handle_parsing_error))
+        .route("/handlerReturn", post(handler_return))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -157,5 +160,40 @@ async fn handle_parsing_error(payload: Result<Json<Input>, JsonRejection>) {
         Err(_) => {
             // `JsonRejection` 标记为 `#[non_exhaustive]`，所以必须兜底
         }
+    }
+}
+
+/**
+ * Axum handler 返回值很灵活，只要实现了 IntoResponse 这个 trait 的类型，都能用作 handler 的返回值。
+ * Axum 会根据返回值的类型，对 Http Response 的 status code 和 header 等进行自动配置，减少了开发者对细节的处理。
+ */
+async fn handler_return(Json(input): Json<Input>) -> impl IntoResponse {
+    // 返回一个 HTML
+    // Html("<h3>handler return</h3>")
+
+    // 返回一个 String
+    // "handler return"
+
+    /*
+     * 返回一个 Json
+     * 在 Axum 里 Json 既是解包器，又可以用在 response 里面。
+     * 借助 serde_json 提供的 json! 宏，可以方便地构造 Json 对象。
+     */
+    // Json(json!({ "result": "ok", "number": 1, }))
+
+    // 返回一个 Redirect 自动重定向页面
+    // Redirect::to("/")
+
+    // 可以在 https://docs.rs/axum/latest/axum/response/trait.IntoResponse.html#foreign-impls 查看其他返回形式
+    // (StatusCode::OK, "Hello, world!")
+
+    /*
+     * 注意，如果一个 handler 里需要返回两个或多个不同的类型，那么需要调用 .into_response() 转换一下。
+     * impl trait 这种在函数中的写法，本质上仍然是编译期单态化，每次编译都会替换成一个具体的类型。
+     */
+    if input.name.is_empty() {
+        Json(json!({ "result": "ok", "number": 1, })).into_response()
+    } else {
+        Redirect::to("/").into_response()
     }
 }
