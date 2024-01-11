@@ -191,7 +191,7 @@ async fn handler_return(Json(input): Json<Input>) -> impl IntoResponse {
      * 注意，如果一个 handler 里需要返回两个或多个不同的类型，那么需要调用 .into_response() 转换一下。
      * impl trait 这种在函数中的写法，本质上仍然是编译期单态化，每次编译都会替换成一个具体的类型。
      */
-    if input.name.is_empty() {
+    if !input.name.is_empty() {
         Json(json!({ "result": "ok", "number": 1, })).into_response()
     } else {
         Redirect::to("/").into_response()
