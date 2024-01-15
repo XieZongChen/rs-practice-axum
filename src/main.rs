@@ -36,7 +36,8 @@ async fn main() {
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
-        .layer(TraceLayer::new_for_http()); // 日志中间件服务
+        .layer(TraceLayer::new_for_http()) // 日志中间件服务
+        .fallback(handler_404); // 没有匹配到任何一个 url pattern 的情况
 
     // 启动端口监听
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -196,4 +197,8 @@ async fn handler_return(Json(input): Json<Input>) -> impl IntoResponse {
     } else {
         Redirect::to("/").into_response()
     }
+}
+
+async fn handler_404() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, "Nothing to see here!")
 }
