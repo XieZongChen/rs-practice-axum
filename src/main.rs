@@ -1,18 +1,26 @@
 use askama::Template;
 use axum::{
-    extract::{rejection::JsonRejection, Form, Json, Path, Query},
+    extract::{rejection::JsonRejection, Form, Json, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
+use bb8::Pool;
+use bb8_postgres::PostgresConnectionManager;
 // serde 是 Rust 生态中用得最广泛的序列化和反序列化框架
 use serde::Deserialize;
 use serde_json::json;
+use tokio_postgres::NoTls;
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
+
+#[derive(Clone)]
+struct AppState {
+    pool: Pool<PostgresConnectionManager<NoTls>>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -21,6 +29,16 @@ async fn main() {
      * 收集的过程是通过通知的方式实现的：当 Event 发生或者 Span 开始/结束时，会调用 Collect 特征的相应方法通知 Collector。
      */
     tracing_subscriber::fmt::init();
+
+    let manager = PostgresConnectionManager::new_from_stringlike(
+        "host=localhost user=postgres dbname=postgres password=123456",
+        NoTls,
+    )
+    .unwrap();
+
+    let pool = Pool::builder().build(manager).await.unwrap();
+
+    let app_state = AppState { pool };
 
     // 配置当访问不存在 url 时的默认返回
     let serve_dir =
@@ -35,11 +53,13 @@ async fn main() {
         .route("/handleParsingError", post(handle_parsing_error))
         .route("/handlerReturn", post(handler_return))
         .route("/returnTemplate/:name", get(return_template)) // 通过 path 传参的路由
+        .route("/query_from_db", get(query_from_db))
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
         .layer(TraceLayer::new_for_http()) // 日志中间件服务
-        .fallback(handler_404); // 没有匹配到任何一个 url pattern 的情况
+        .fallback(handler_404) // 没有匹配到任何一个 url pattern 的情况
+        .with_state(app_state);
 
     // 启动端口监听
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -212,6 +232,33 @@ struct HelloTemplate {
  */
 async fn return_template(Path(name): Path<String>) -> impl IntoResponse {
     HelloTemplate { name }.to_string()
+}
+
+async fn query_from_db(
+    State(AppState { pool }): State<AppState>,
+) -> Result<String, (StatusCode, String)> {
+    tracing::debug!("get db conn {:?}", pool);
+    let conn = pool.get().await.map_err(internal_error)?;
+
+    tracing::debug!("query_from_db: 1");
+    let row = conn
+        .query_one("select 1 + 1", &[])
+        .await
+        .map_err(internal_error)?;
+    tracing::debug!("query_from_db: 2");
+
+    let two: i32 = row.try_get(0).map_err(internal_error)?;
+    tracing::debug!("query_from_db: 3");
+    tracing::debug!("calc_result {:?}", two);
+
+    Ok(two.to_string())
+}
+
+fn internal_error<E>(err: E) -> (StatusCode, String)
+where
+    E: std::error::Error,
+{
+    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
 async fn handler_404() -> impl IntoResponse {
