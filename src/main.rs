@@ -1,5 +1,6 @@
+use askama::Template;
 use axum::{
-    extract::{rejection::JsonRejection, Form, Json, Query},
+    extract::{rejection::JsonRejection, Form, Json, Path, Query},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
@@ -33,6 +34,7 @@ async fn main() {
         .route("/json", post(accept_json))
         .route("/handleParsingError", post(handle_parsing_error))
         .route("/handlerReturn", post(handler_return))
+        .route("/returnTemplate/:name", get(return_template)) // 通过 path 传参的路由
         .nest_service("/assets", ServeDir::new("assets")) // 把 /assets/* 的 URL 映射到 assets 目录下
         .nest_service("/assets2", serve_dir.clone())
         .fallback_service(serve_dir) // 注意需要挂载
@@ -197,6 +199,19 @@ async fn handler_return(Json(input): Json<Input>) -> impl IntoResponse {
     } else {
         Redirect::to("/").into_response()
     }
+}
+
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct HelloTemplate {
+    name: String,
+}
+
+/**
+ * 从 path 中读取 name 参数并渲染到 template 内
+ */
+async fn return_template(Path(name): Path<String>) -> impl IntoResponse {
+    HelloTemplate { name }.to_string()
 }
 
 async fn handler_404() -> impl IntoResponse {
