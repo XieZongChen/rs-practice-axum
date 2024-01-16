@@ -17,6 +17,9 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+/**
+ * 全局应用状态，统一管理全局共享信息
+ */
 #[derive(Clone)]
 struct AppState {
     pool: Pool<PostgresConnectionManager<NoTls>>,
@@ -30,12 +33,14 @@ async fn main() {
      */
     tracing_subscriber::fmt::init();
 
+    // 数据库
     let manager = PostgresConnectionManager::new_from_stringlike(
         "host=localhost user=postgres dbname=postgres password=123456",
         NoTls,
     )
     .unwrap();
 
+    // 连接池对象
     let pool = Pool::builder().build(manager).await.unwrap();
 
     let app_state = AppState { pool };
@@ -59,7 +64,7 @@ async fn main() {
         .fallback_service(serve_dir) // 注意需要挂载
         .layer(TraceLayer::new_for_http()) // 日志中间件服务
         .fallback(handler_404) // 没有匹配到任何一个 url pattern 的情况
-        .with_state(app_state);
+        .with_state(app_state); // 这样就可以把这个全局状态传递到每一个 handler 和中间件里了
 
     // 启动端口监听
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -235,7 +240,7 @@ async fn return_template(Path(name): Path<String>) -> impl IntoResponse {
 }
 
 async fn query_from_db(
-    State(AppState { pool }): State<AppState>,
+    State(AppState { pool }): State<AppState>, // 解包全局状态，拿到其中管理的 pool
 ) -> Result<String, (StatusCode, String)> {
     tracing::debug!("get db conn {:?}", pool);
     let conn = pool.get().await.map_err(internal_error)?;
